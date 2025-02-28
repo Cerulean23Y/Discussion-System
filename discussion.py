@@ -3,7 +3,6 @@ import random
 import json
 import os
 from datetime import datetime
-from collections import defaultdict
 
 # 获取当前日期，格式为 YYYY-MM-DD
 current_date = datetime.now().strftime("%Y-%m-%d")
@@ -27,13 +26,7 @@ def load_questions(file_name):
 def save_questions(data, file_name):
     with open(file_name, "w") as f:
         json.dump(data, f, indent=4)  # 添加缩进以便阅读
-
-# 获取所有日期的文件
-def get_all_dates(data_dir):
-    files = [f for f in os.listdir(data_dir) if f.startswith("questions_") and f.endswith(".json")]
-    dates = [f.replace("questions_", "").replace(".json", "") for f in files]
-    return sorted(dates, reverse=True)
-
+        
 # 主页面
 def main():
     st.title("EEPS小组讨论系统")
