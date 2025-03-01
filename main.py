@@ -207,17 +207,21 @@ def render_admin_panel(data_manager):
 
 # ===== 主程序 =====
 def main():
-    data_manager = DataManager()
-    auth_manager = AuthManager()
-    session_manager = SessionStateManager()
-    
     # 初始化页面配置
     st.set_page_config(
-        page_title="🔬 EEPS科研讨论管理系统",
+        page_title="🔬 EEPS科研讨论小程序",
         page_icon="📊",
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    
+    # 添加主页面标题
+    st.title("EEPS科研讨论小程序")
+    st.write("欢迎使用EEPS小组科研讨论小程序！")
+
+    data_manager = DataManager()
+    auth_manager = AuthManager()
+    session_manager = SessionStateManager()
     
     # 路由控制
     if st.session_state.is_admin:
