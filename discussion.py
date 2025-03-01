@@ -72,18 +72,12 @@ def main():
             
             elif manager_page == "问题汇总":
                 st.subheader("问题汇总")
-                all_dates = get_all_dates()
-                selected_date = st.selectbox("选择日期", all_dates)
-                selected_file = f"questions_{selected_date}.json"
-                if os.path.exists(selected_file):
-                    questions = load_questions(selected_file)
-                    st.write(f"**{selected_date} 的进展和问题**：")
-                    for user, data in questions.items():
-                        st.write(f"**{user}**")
-                        st.write(f"进展：{data['progress']}")
-                        st.write(f"问题：{data['question']}")
-                else:
-                    st.warning("没有找到该日期的数据！")
+                questions = load_questions(questions_file)
+                st.write(f"**{current_date} 的进展和问题**：")
+                for user, data in questions.items():
+                    st.write(f"**{user}**")
+                    st.write(f"进展：{data['progress']}")
+                    st.write(f"问题：{data['question']}")
         else:
             st.warning("密码错误！")
     else:
@@ -91,3 +85,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
