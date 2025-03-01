@@ -1,127 +1,226 @@
 import streamlit as st
 import json
 import os
-from datetime import datetime
 import random
+from datetime import datetime
 from pathlib import Path
+import hmac  # 修复 hmac 未导入问题
 
 # ===== 系统配置 =====
-PERSISTENT_DIR = Path(__file__).parent / "persistent_data"  # 持久化目录
-SUBMISSION_FILE = PERSISTENT_DIR / "submissions.json"      # 数据文件
-ADMIN_PWD = "eepsadmin123"  # 建议部署时通过Streamlit Secrets设置
+DATA_DIR = Path(__file__).parent / "persistent_data"
+SUBMISSION_FILE = DATA_DIR / "submissions.json"
+DATE_FORMAT = "%Y-%m-%d"
+TIME_FORMAT = "%H:%M:%S"
 
-# ===== 初始化存储 =====
-def init_storage():
-    """创建持久化目录和文件"""
-    PERSISTENT_DIR.mkdir(exist_ok=True)
-    if not SUBMISSION_FILE.exists():
-        with open(SUBMISSION_FILE, "w") as f:
-            json.dump({}, f)
+# ===== 数据管理层 =====
+class DataManager:
+    def __init__(self):
+        self._init_storage()
+        
+    def _init_storage(self):
+        """初始化存储目录"""
+        try:
+            DATA_DIR.mkdir(exist_ok=True)
+            if not SUBMISSION_FILE.exists():
+                with open(SUBMISSION_FILE, "w") as f:
+                    json.dump({}, f)
+        except PermissionError as e:
+            st.error(f"🛑 存储初始化失败: {str(e)}")
+            st.stop()
 
-# ===== 数据操作 =====
-def load_data():
-    """加载全部数据"""
-    with open(SUBMISSION_FILE, "r") as f:
-        return json.load(f)
+    def load_all(self):
+        """加载全部数据"""
+        try:
+            with open(SUBMISSION_FILE, "r") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            st.error("📄 数据格式错误，请检查存储文件")
+            return {}
+        except Exception as e:
+            st.error(f"💔 操作失败: {str(e)}")
+            return {}
 
-def save_data(data):
-    """保存全部数据"""
-    with open(SUBMISSION_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    def save_all(self, data):
+        """保存全部数据"""
+        try:
+            with open(SUBMISSION_FILE, "w") as f:
+                json.dump(data, f, indent=2)
+        except json.JSONDecodeError:
+            st.error("📄 数据格式错误，请检查存储文件")
+            return {}
+        except Exception as e:
+            st.error(f"💔 操作失败: {str(e)}")
+            return {}
 
-def get_today_submissions():
-    """获取当日提交"""
-    data = load_data()
-    today = datetime.now().strftime("%Y-%m-%d")
-    return data.get(today, {})
+    def get_daily_submissions(self, date_str=None):
+        """获取指定日期的提交记录"""
+        data = self.load_all()
+        target_date = date_str or datetime.now().strftime(DATE_FORMAT)
+        return data.get(target_date, {})
 
-def update_submission(user, progress, question):
-    """更新用户提交"""
-    data = load_data()
-    today = datetime.now().strftime("%Y-%m-%d")
-    
-    if today not in data:
-        data[today] = {}
-    
-    data[today][user] = {
-        "progress": progress,
-        "question": question,
-        "timestamp": datetime.now().strftime("%H:%M:%S")
-    }
-    
-    save_data(data)
+    def update_submission(self, user, progress, question):
+        """更新用户提交记录"""
+        data = self.load_all()
+        today = datetime.now().strftime(DATE_FORMAT)
+        data.setdefault(today, {})
+        
+        cleaned_data = {
+            "progress": progress.strip() if progress else "",
+            "question": question.strip() if question else "",
+            "timestamp": datetime.now().strftime(TIME_FORMAT)
+        }
+        
+        data[today][user] = cleaned_data
+        self.save_all(data)
+
+# ===== 认证管理层 =====
+class AuthManager:
+    def __init__(self):
+        self.admin_pwd = self._get_admin_password()
+        
+    def _get_admin_password(self):
+        """获取管理员密码"""
+        try:
+            return st.secrets["server"]["ADMIN_PWD"]
+        except (FileNotFoundError, KeyError):
+            return os.getenv("ADMIN_PWD", "default_password")
+
+    def validate_password(self, input_pwd):
+        """安全验证密码"""
+        return hmac.compare_digest(input_pwd, self.admin_pwd)
+
+# ===== 会话状态管理 =====
+class SessionStateManager:
+    def __init__(self):
+        self._initialize_states()
+        
+    def _initialize_states(self):
+        """初始化所有会话状态"""
+        states = {
+            "is_admin": False,
+            "selected_user": None,
+            "form_data": None,
+            "submission_success": False
+        }
+        for state, default in states.items():
+            if state not in st.session_state:
+                st.session_state[state] = default
+
+    def set_submission_success(self, success):
+        """设置提交成功状态"""
+        st.session_state.submission_success = success
+
+    def clear_form_data(self):
+        """清除表单数据"""
+        st.session_state.form_data = None
 
 # ===== 页面组件 =====
-def user_submission_page():
-    """用户提交界面"""
-    st.header("📝 每周进展提交")
+def render_login_form(auth_manager):
+    """渲染管理员登录表单"""
+    with st.sidebar:
+        st.header("🔒 管理员登录")
+        pwd_input = st.text_input("密码", type="password", key="admin_pwd")
+        
+        login_btn = st.button("登录", key="admin_login")
+        if login_btn:
+            if auth_manager.validate_password(pwd_input):
+                st.session_state.is_admin = True
+                st.success("✅ 登录成功！")
+                st.rerun()
+            else:
+                st.error("❌ 密码错误！")
+
+def render_submission_form(data_manager, session_manager):
+    """渲染用户提交表单"""
+    # 提交成功状态显示
+    submission_success = st.session_state.submission_success
+    if submission_success:
+        st.header("📝 提交成功！")
+        st.write("您的提交已成功接收！")
+        
+        # 操作按钮
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.button("🔄 重新提交", 
+                       key="resubmit_btn",
+                       on_click=lambda: session_manager.set_submission_success(False))
+        with col2:
+            st.button("🏠 返回首页", 
+                       key="home_btn",
+                       on_click=lambda: st.experimental_rerun())
+        return
     
+    # 表单提交
+    st.header("📝 用户提交")
     with st.form("submission_form"):
         user = st.text_input("姓名", key="user_name").strip()
-        progress = st.text_area("本周工作进展", height=150)
-        question = st.text_area("遇到的问题", height=150)
+        progress = st.text_area("本周工作进展", height=150, key="progress_input")
+        question = st.text_area("遇到的问题", height=150, key="question_input")
         
-        if st.form_submit_button("提交"):
+        submit_btn = st.form_submit_button("提交")
+        if submit_btn:
             if user and progress and question:
-                update_submission(user, progress, question)
-                st.success("✅ 提交成功！可重复提交更新内容")
+                data_manager.update_submission(user, progress, question)
+                session_manager.set_submission_success(True)  # 设置提交成功状态
             else:
                 st.warning("⚠️ 请填写所有字段")
 
-def admin_dashboard():
-    """管理员控制台"""
-    st.sidebar.button("退出管理", on_click=lambda: st.session_state.clear())
+def render_admin_panel(data_manager):
+    """渲染管理员控制台"""
+    st.sidebar.button("退出管理", key="logout_btn", on_click=lambda: st.session_state.clear())
     
-    # 功能导航
-    tab1, tab2 = st.tabs(["🎲 随机抽取", "📅 历史查询"])
+    tab1, tab2 = st.tabs(["🎲 随机抽检", "📅 历史查询"])
     
+    # 随机抽检模块
     with tab1:
-        today_sub = get_today_submissions()
-        if st.button("随机抽取"):
-            if today_sub:
-                user = random.choice(list(today_sub.keys()))
-                st.session_state.selected_user = user
-        if "selected_user" in st.session_state:
-            data = today_sub[st.session_state.selected_user]
-            st.subheader(f"{st.session_state.selected_user} 的提交")
-            st.write("**进展**", data["progress"])
-            st.write("**问题**", data["question"])
-    
-    with tab2:
-        all_data = load_data()
-        dates = sorted(all_data.keys(), reverse=True)
-        selected_date = st.selectbox("选择日期", dates)
+        today_submissions = data_manager.get_daily_submissions()
+        random_btn = st.button("随机抽取", key="random_pick")
+        if random_btn:
+            if not today_submissions:
+                st.warning("⚠️ 当日无提交记录")
+                return
+            selected_user = random.choice(list(today_submissions.keys()))
+            st.session_state.selected_user = selected_user
+            st.rerun()
         
-        if selected_date:
-            st.write(f"### {selected_date} 提交情况")
-            for user, data in all_data[selected_date].items():
-                with st.expander(user):
-                    st.write("进展：", data["progress"])
-                    st.write("问题：", data["question"])
+        if st.session_state.get("selected_user"):
+            user_data = today_submissions[st.session_state.selected_user]
+            st.subheader(f"👤 {st.session_state.selected_user} 的提交")
+            st.write(f"**进度**: {user_data['progress']}")
+            st.write(f"**问题**: {user_data['question']}")
+
+    # 历史查询模块
+    with tab2:
+        all_dates = sorted(data_manager.load_all().keys(), reverse=True)
+        date_select = st.selectbox("选择日期", all_dates, key="date_select")
+        if date_select:
+            submissions = data_manager.load_all()[date_select]
+            st.subheader(f"📅 {date_select} 的提交记录")
+            for username, data in submissions.items():
+                with st.expander(username):
+                    st.write(f"**进度**: {data['progress']}")
+                    st.write(f"**问题**: {data['question']}")
 
 # ===== 主程序 =====
 def main():
-    init_storage()
-    st.set_page_config(page_title="EEPS管理系统", layout="wide")
-    st.title("🔬 课题组管理系统")
+    data_manager = DataManager()
+    auth_manager = AuthManager()
+    session_manager = SessionStateManager()
     
-    # 管理员登录
-    if not hasattr(st.session_state, "is_admin"):
-        with st.sidebar:
-            st.header("管理员登录")
-            pwd = st.text_input("密码", type="password")
-            if st.button("登录"):
-                if pwd == ADMIN_PWD:
-                    st.session_state.is_admin = True
-                    st.experimental_rerun()
-                else:
-                    st.error("密码错误")
+    # 初始化页面配置
+    st.set_page_config(
+        page_title="🔬 EEPS科研讨论管理系统",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-    # 页面路由
-    if st.session_state.get("is_admin"):
-        admin_dashboard()
+    # 路由控制
+    if st.session_state.is_admin:
+        render_admin_panel(data_manager)
     else:
-        user_submission_page()
+        render_login_form(auth_manager)
+        render_submission_form(data_manager, session_manager)
 
 if __name__ == "__main__":
     main()
