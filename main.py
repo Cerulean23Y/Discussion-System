@@ -83,7 +83,7 @@ class AuthManager:
         try:
             return st.secrets["server"]["ADMIN_PWD"]
         except (FileNotFoundError, KeyError):
-            return os.getenv("ADMIN_PWD", "default_password")
+            return os.getenv("ADMIN_PWD", "eepslogin")
 
     def validate_password(self, input_pwd):
         """安全验证密码"""
