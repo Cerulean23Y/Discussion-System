@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import hmac  # 修复 hmac 未导入问题
 
@@ -52,11 +52,12 @@ class DataManager:
             st.error(f"💔 操作失败: {str(e)}")
             return {}
 
-    def get_daily_submissions(self, date_str=None):
-        """获取指定日期的提交记录"""
+    def get_recent_submissions(self, days=7):
+        """获取近一周内的提交记录"""
         data = self.load_all()
-        target_date = date_str or datetime.now().strftime(DATE_FORMAT)
-        return data.get(target_date, {})
+        recent_dates = [date for date in data.keys() if datetime.strptime(date, DATE_FORMAT) >= datetime.now() - timedelta(days=days)]
+        recent_submissions = {date: data[date] for date in recent_dates}
+        return recent_submissions
 
     def update_submission(self, user, progress, question):
         """更新用户提交记录"""
@@ -83,7 +84,7 @@ class AuthManager:
         try:
             return st.secrets["server"]["ADMIN_PWD"]
         except (FileNotFoundError, KeyError):
-            return os.getenv("ADMIN_PWD", "default_password")
+            return os.getenv("ADMIN_PWD", "eepsadmin")
 
     def validate_password(self, input_pwd):
         """安全验证密码"""
@@ -173,19 +174,22 @@ def render_admin_panel(data_manager):
     
     # 随机抽检模块
     with tab1:
-        today_submissions = data_manager.get_daily_submissions()
+        recent_submissions = data_manager.get_recent_submissions(days=7)
         random_btn = st.button("随机抽取", key="random_pick")
         if random_btn:
-            if not today_submissions:
-                st.warning("⚠️ 当日无提交记录")
+            if not recent_submissions:
+                st.warning("⚠️ 近一周内无提交记录")
                 return
-            selected_user = random.choice(list(today_submissions.keys()))
-            st.session_state.selected_user = selected_user
+            selected_date = random.choice(list(recent_submissions.keys()))
+            selected_user = random.choice(list(recent_submissions[selected_date].keys()))
+            st.session_state.selected_user = (selected_date, selected_user)
             st.rerun()
         
         if st.session_state.get("selected_user"):
-            user_data = today_submissions[st.session_state.selected_user]
-            st.subheader(f"👤 {st.session_state.selected_user} 的提交")
+            selected_date, selected_user = st.session_state.selected_user
+            user_data = recent_submissions[selected_date][selected_user]
+            st.subheader(f"👤 {selected_user} 的提交")
+            st.write(f"**日期**: {selected_date}")
             st.write(f"**进度**: {user_data['progress']}")
             st.write(f"**问题**: {user_data['question']}")
 
