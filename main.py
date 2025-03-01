@@ -60,7 +60,7 @@ class DataManager:
         return recent_submissions
 
     def update_submission(self, user, progress, question):
-        """更新用户提交记录"""
+        """更新同学提交记录"""
         data = self.load_all()
         today = datetime.now().strftime(DATE_FORMAT)
         data.setdefault(today, {})
@@ -132,7 +132,7 @@ def render_login_form(auth_manager):
                 st.error("❌ 密码错误！")
 
 def render_submission_form(data_manager, session_manager):
-    """渲染用户提交表单"""
+    """渲染同学提交表单"""
     # 提交成功状态显示
     submission_success = st.session_state.submission_success
     if submission_success:
@@ -152,7 +152,7 @@ def render_submission_form(data_manager, session_manager):
         return
     
     # 表单提交
-    st.header("📝 用户提交")
+    st.header("📝 同学提交")
     with st.form("submission_form"):
         user = st.text_input("姓名", key="user_name").strip()
         progress = st.text_area("本周工作进展", height=150, key="progress_input")
@@ -190,20 +190,20 @@ def render_admin_panel(data_manager):
             user_data = recent_submissions[selected_date][selected_user]
             st.subheader(f"👤 {selected_user} 的提交")
             st.write(f"**日期**: {selected_date}")
-            st.write(f"**进度**: {user_data['progress']}")
-            st.write(f"**问题**: {user_data['question']}")
+            st.write(f"**进度*: {user_data['progress']}")
+            st.write(f"**问题*: {user_data['question']}")
 
     # 历史查询模块
     with tab2:
-        all_dates = sorted(data_manager.load_all().keys(), reverse=True)
-        date_select = st.selectbox("选择日期", all_dates, key="date_select")
-        if date_select:
-            submissions = data_manager.load_all()[date_select]
-            st.subheader(f"📅 {date_select} 的提交记录")
-            for username, data in submissions.items():
-                with st.expander(username):
-                    st.write(f"**进度**: {data['progress']}")
-                    st.write(f"**问题**: {data['question']}")
+        st.subheader("📅 近一周内的提交记录")
+        recent_submissions = data_manager.get_recent_submissions(days=7)
+        for date, submissions in recent_submissions.items():
+            with st.expander(f"{date} 的提交"):
+                for username, data in submissions.items():
+                    st.write(f"**同学**: {username}")
+                    st.write(f"**进度*: {data['progress']}")
+                    st.write(f"**问题*: {data['question']}")
+                    st.write("---")
 
 # ===== 主程序 =====
 def main():
@@ -217,7 +217,6 @@ def main():
     
     # 添加主页面标题
     st.title("EEPS科研讨论小程序")
-    st.write("欢迎使用EEPS小组科研讨论小程序！")
 
     data_manager = DataManager()
     auth_manager = AuthManager()
