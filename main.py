@@ -170,6 +170,9 @@ def render_admin_panel(data_manager):
     """渲染管理员控制台"""
     st.sidebar.button("退出管理", key="logout_btn", on_click=lambda: st.session_state.clear())
     
+    url = "https://discussion-system-summary.streamlit.app/"
+    st.sidebar.markdown(f"[访问问题汇总页面]({url})", unsafe_allow_html=True)
+
     tab1, tab2 = st.tabs(["🎲 随机抽检", "📅 历史查询"])
     
     # 随机抽检模块
